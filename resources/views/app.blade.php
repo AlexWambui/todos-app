@@ -5,8 +5,10 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
         <link rel="icon" href="{{ asset('assets/images/v2-white.svg') }}" sizes="any">
-        {{-- <link rel="icon" href="/favicon.svg" type="image/svg+xml"> --}}
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <link rel="apple-touch-icon" href="{{ asset('assets/images/v2-white.svg') }}">
+
+        <link rel="icon" href="{{ asset('assets/images/v2-no-bg.png') }}" sizes="any">
+        <link rel="apple-touch-icon" href="{{ asset('assets/images/v2-no-bg.png') }}">
 
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=instrument-sans:400,500,600" rel="stylesheet" />
