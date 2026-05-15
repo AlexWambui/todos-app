@@ -552,7 +552,10 @@ const cycleQPriority = () => {
                                     >
                                         <button
                                             class="sub-check"
-                                            :class="{ 'check-done': child.status === 2 }"
+                                            :class="{
+                                                'check-done': child.status === 2,
+                                                'check-doing': child.status === 1,
+                                            }"
                                             @click="cycleStatus(child)"
                                         ></button>
                                         <span class="sub-title" :class="{ done: child.status === 2 }">{{ child.title }}</span>
@@ -914,7 +917,7 @@ const cycleQPriority = () => {
     background: var(--green); border-color: var(--green);
 }
 .task-check.check-done::after { content: '✓'; color: #fff; font-size: 11px; font-weight: 700; }
-.task-check.check-doing { border-color: #4A7FD4; border-style: dashed; }
+.task-check.check-doing, .sub-check.check-doing { border-color: #4A7FD4; border-style: dashed; }
 
 .task-body {
     flex: 1; min-width: 0;
@@ -965,7 +968,7 @@ const cycleQPriority = () => {
 
 .sub-check {
     width: 16px; height: 16px; border-radius: 50%;
-    border: 1.5px solid var(--border2); flex-shrink: 0;
+    border: 2px solid var(--border2); flex-shrink: 0;
     cursor: pointer; background: transparent;
     display: flex; align-items: center; justify-content: center;
     transition: all .2s;
@@ -978,7 +981,7 @@ const cycleQPriority = () => {
     flex: 1; font-size: 13px; color: var(--text2);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.sub-title.done { text-decoration: line-through; color: var(--text3); }
+.sub-title.done { text-decoration: line-through; font-style: italic; color: var(--text); }
 
 .sub-del { width: 22px; height: 22px; font-size: 11px; }
 
