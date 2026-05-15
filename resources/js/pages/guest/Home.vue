@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useForm, router } from '@inertiajs/vue3';
-import { ref, computed, nextTick } from 'vue';
+import { ref, computed, nextTick, watch } from 'vue';
 
 interface TodoItem {
     id: number;
@@ -214,6 +214,19 @@ const cancelSub = () => {
 const cycleQPriority = () => {
     quickPriority.value = (quickPriority.value + 1) % 4;
 };
+
+// Auto-expand all items that have children whenever the active list changes
+watch(activeListId, () => {
+    // Clear existing expanded items
+    expandedItems.value.clear();
+
+    // Add all item IDs that have children
+    const itemsWithChildren = (activeList.value?.todo_items ?? [])
+        .filter(item => item.children && item.children.length > 0)
+        .map(item => item.id);
+
+    itemsWithChildren.forEach(id => expandedItems.value.add(id));
+}, { immediate: true });
 </script>
 
 <template>
