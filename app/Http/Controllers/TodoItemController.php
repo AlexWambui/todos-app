@@ -13,6 +13,8 @@ class TodoItemController extends Controller
             'title' => ['required', 'string', 'max:255'],
             'todo_id' => ['required', 'exists:todos,id'],
             'parent_id' => ['nullable', 'exists:todo_items,id'],
+            'priority' => ['sometimes', 'integer', 'min:0', 'max:3'],
+            'status' => ['sometimes', 'integer', 'min:0', 'max:3'],
         ]);
 
         $todoItem = TodoItem::create([
@@ -37,6 +39,7 @@ class TodoItemController extends Controller
             'status' => ['sometimes', 'integer', 'min:0', 'max:3'],
             'due_date' => ['nullable', 'date'],
             'start_date' => ['nullable', 'date'],
+            'order' => ['sometimes', 'integer', 'min:0'],
         ]);
 
         $todoItem->update($validated);

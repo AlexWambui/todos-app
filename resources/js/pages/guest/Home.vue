@@ -37,6 +37,10 @@ const quickTaskTitle = ref('');
 const subTaskTitle   = ref('');
 const subInputRef    = ref<HTMLInputElement | null>(null);
 
+const editingItemId = ref<number | null>(null);
+const editingTitle = ref('');
+const editInputRef = ref<HTMLInputElement | null>(null);
+
 // ─── Config ───────────────────────────────────────────────────
 const LIST_COLORS = [
     '#7C6FF7','#3AAD7A','#D4A020','#D44A4A',
@@ -62,17 +66,36 @@ const activeList = computed(() =>
     props.todos.find(t => t.id === activeListId.value) ?? null
 );
 
-const rootItems = computed(() =>
-    (activeList.value?.todo_items ?? []).filter(i => i.parent_id === null)
-);
+// Updated rootItems to sort children by order
+const rootItems = computed(() => {
+    const items = activeList.value?.todo_items ?? [];
+    const rootItemsList = items.filter(i => i.parent_id === null);
+
+    // Sort root items by order
+    rootItemsList.sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    // Sort children of each root item
+    rootItemsList.forEach(item => {
+        if (item.children) {
+            item.children.sort((a, b) => (a.order || 0) - (b.order || 0));
+        }
+    });
+
+    return rootItemsList;
+});
 
 const filteredItems = computed(() => {
     const items = rootItems.value;
-    if (filter.value === 'pending') return items.filter(i => i.status === 0);
-    if (filter.value === 'doing')   return items.filter(i => i.status === 1);
-    if (filter.value === 'done')    return items.filter(i => i.status === 2);
-    if (filter.value === 'urgent')  return items.filter(i => i.priority === 3);
-    return items;
+    let filtered = [...items];
+
+    // Apply filters
+    if (filter.value === 'pending') filtered = filtered.filter(i => i.status === 0);
+    else if (filter.value === 'doing') filtered = filtered.filter(i => i.status === 1);
+    else if (filter.value === 'done') filtered = filtered.filter(i => i.status === 2);
+    else if (filter.value === 'urgent') filtered = filtered.filter(i => i.priority === 3);
+
+    // Sort by order (lowest first)
+    return filtered.sort((a, b) => (a.order || 0) - (b.order || 0));
 });
 
 const stats = computed(() => {
@@ -213,6 +236,82 @@ const cancelSub = () => {
 
 const cycleQPriority = () => {
     quickPriority.value = (quickPriority.value + 1) % 4;
+};
+
+const startEdit = async (item: TodoItem) => {
+    editingItemId.value = item.id;
+    editingTitle.value = item.title;
+    await nextTick();
+    editInputRef.value?.focus();
+};
+
+const cancelEdit = () => {
+    editingItemId.value = null;
+    editingTitle.value = '';
+};
+
+const updateItem = (item: TodoItem) => {
+    if (!editingTitle.value.trim() || editingTitle.value === item.title) {
+        cancelEdit();
+        return;
+    }
+
+    router.put(`/todo-items/${item.id}`, {
+        title: editingTitle.value.trim()
+    }, {
+        preserveScroll: true,
+        onSuccess: () => {
+            cancelEdit();
+        },
+    });
+};
+
+// new methods for sorting
+const moveItemUp = (item: TodoItem, items: TodoItem[]) => {
+    const currentIndex = items.findIndex(i => i.id === item.id);
+    if (currentIndex === 0) return; // Already at top
+
+    const prevItem = items[currentIndex - 1];
+    const tempOrder = item.order;
+
+    // Swap orders with the previous item
+    router.put(`/todo-items/${item.id}`, { order: prevItem.order }, {
+        preserveScroll: true,
+        onSuccess: () => {
+            router.put(`/todo-items/${prevItem.id}`, { order: tempOrder }, {
+                preserveScroll: true,
+            });
+        },
+    });
+};
+
+const moveItemDown = (item: TodoItem, items: TodoItem[]) => {
+    const currentIndex = items.findIndex(i => i.id === item.id);
+    if (currentIndex === items.length - 1) return; // Already at bottom
+
+    const nextItem = items[currentIndex + 1];
+    const tempOrder = item.order;
+
+    // Swap orders with the next item
+    router.put(`/todo-items/${item.id}`, { order: nextItem.order }, {
+        preserveScroll: true,
+        onSuccess: () => {
+            router.put(`/todo-items/${nextItem.id}`, { order: tempOrder }, {
+                preserveScroll: true,
+            });
+        },
+    });
+};
+
+// Also add sorting for subtasks (they need their own items array)
+const moveSubtaskUp = (subtask: TodoItem, parentItem: TodoItem) => {
+    const items = parentItem.children || [];
+    moveItemUp(subtask, items);
+};
+
+const moveSubtaskDown = (subtask: TodoItem, parentItem: TodoItem) => {
+    const items = parentItem.children || [];
+    moveItemDown(subtask, items);
 };
 
 // Auto-expand all items that have children whenever the active list changes
@@ -522,24 +621,42 @@ watch(activeListId, () => {
 
                                 <!-- Title + tags -->
                                 <div class="task-body">
-                                    <span class="task-title" :class="{ done: item.status === 2 }">{{ item.title }}</span>
-                                    <span
-                                        class="tag"
-                                        :style="{ color: PRIO[item.priority]?.color, background: PRIO[item.priority]?.bg }"
-                                    >{{ PRIO[item.priority]?.label }}</span>
-                                    <span
-                                        class="tag"
-                                        :style="{ color: STATUS[item.status]?.color, background: STATUS[item.status]?.bg }"
-                                    >{{ STATUS[item.status]?.label }}</span>
-                                    <span
-                                        v-if="item.children && item.children.length"
-                                        class="sub-count"
-                                    >{{ item.children.filter(c => c.status === 2).length }}/{{ item.children.length }}</span>
+                                    <!-- Edit mode -->
+                                    <div v-if="editingItemId === item.id" class="edit-mode">
+                                        <input
+                                            ref="editInputRef"
+                                            v-model="editingTitle"
+                                            class="edit-input"
+                                            @keydown.enter="updateItem(item)"
+                                            @keydown.esc="cancelEdit"
+                                            @blur="updateItem(item)"
+                                        />
+                                    </div>
+
+                                    <!-- View mode -->
+                                    <template v-else>
+                                        <span class="task-title" :class="{ done: item.status === 2 }">{{ item.title }}</span>
+                                        <span
+                                            class="tag"
+                                            :style="{ color: PRIO[item.priority]?.color, background: PRIO[item.priority]?.bg }"
+                                        >{{ PRIO[item.priority]?.label }}</span>
+                                        <span
+                                            class="tag"
+                                            :style="{ color: STATUS[item.status]?.color, background: STATUS[item.status]?.bg }"
+                                        >{{ STATUS[item.status]?.label }}</span>
+                                        <span
+                                            v-if="item.children && item.children.length"
+                                            class="sub-count"
+                                        >{{ item.children.filter(c => c.status === 2).length }}/{{ item.children.length }}</span>
+                                    </template>
                                 </div>
 
                                 <!-- Hover actions -->
                                 <div class="task-actions">
+                                    <button class="t-act move" @click="moveItemUp(item, filteredItems)" title="Move up">↑</button>
+                                    <button class="t-act move" @click="moveItemDown(item, filteredItems)" title="Move down">↓</button>
                                     <button class="t-act" @click="startAddSub(item)" title="Add subtask">＋</button>
+                                    <button class="t-act" @click="startEdit(item)" title="Edit">✎</button>
                                     <button
                                         class="t-act prio-act"
                                         @click="cyclePriority(item)"
@@ -571,13 +688,35 @@ watch(activeListId, () => {
                                             }"
                                             @click="cycleStatus(child)"
                                         ></button>
+
+                                        <!-- Edit mode for subtask -->
+                                        <div v-if="editingItemId === child.id" class="edit-mode subtask-edit">
+                                            <input
+                                                ref="editInputRef"
+                                                v-model="editingTitle"
+                                                class="edit-input subtask-edit-input"
+                                                @keydown.enter="updateItem(child)"
+                                                @keydown.esc="cancelEdit"
+                                                @blur="updateItem(child)"
+                                            />
+                                        </div>
+
+                                    <!-- View mode for subtask -->
+                                    <template v-else>
                                         <span class="sub-title" :class="{ done: child.status === 2 }">{{ child.title }}</span>
                                         <span
                                             class="tag"
                                             :style="{ color: PRIO[child.priority]?.color, background: PRIO[child.priority]?.bg, fontSize: '10px' }"
                                         >{{ PRIO[child.priority]?.label }}</span>
+                                    </template>
+
+                                    <div class="subtask-actions">
+                                        <button class="t-act move-small" @click="moveSubtaskUp(child, item)" title="Move up">↑</button>
+                                        <button class="t-act move-small" @click="moveSubtaskDown(child, item)" title="Move down">↓</button>
+                                        <button class="t-act" @click="startEdit(child)" title="Edit">✎</button>
                                         <button class="t-act del sub-del" @click="deleteItem(child.id)">✕</button>
                                     </div>
+                                </div>
                                 </template>
 
                                 <!-- Inline subtask add -->
@@ -1021,4 +1160,88 @@ watch(activeListId, () => {
 .main::-webkit-scrollbar { width: 4px; }
 .main::-webkit-scrollbar-track { background: transparent; }
 .main::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+/* Edit mode styles */
+.edit-mode {
+    flex: 1;
+    min-width: 0;
+}
+
+.edit-input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--accent);
+    border-radius: var(--r-sm);
+    padding: 4px 8px;
+    color: var(--text);
+    font-family: var(--fb);
+    font-size: 14px;
+    outline: none;
+}
+
+.edit-input:focus {
+    border-color: var(--accent-l);
+}
+
+.subtask-edit {
+    flex: 1;
+}
+
+.subtask-edit-input {
+    font-size: 13px;
+    padding: 2px 6px;
+}
+
+/* Make edit button visible */
+.t-act {
+    /* existing styles */
+}
+
+.t-act:hover {
+    /* existing styles */
+}
+
+/* Add these styles to your <style> section */
+
+/* Move button specific styles */
+.move {
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.move-small {
+    font-size: 12px;
+    font-weight: bold;
+    width: 24px;
+    height: 24px;
+}
+
+/* Container for subtask actions */
+.subtask-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity .15s;
+}
+
+.subtask-row:hover .subtask-actions {
+    opacity: 1;
+}
+
+/* Adjust subtask-row to accommodate new actions */
+.subtask-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 12px 0 48px;
+    min-height: 40px;
+    border-bottom: 1px solid var(--border);
+    transition: background .15s;
+}
+
+/* Ensure the subtask title still takes available space */
+.subtask-row .sub-title {
+    flex: 1;
+}
 </style>
